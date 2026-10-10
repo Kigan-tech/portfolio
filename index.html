@@ -229,7 +229,7 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-off
 }
 </style>
 <script>
-(function(){var t=null;try{t=localStorage.getItem('theme');}catch(e){}if(t==='dark'||t==='light')document.documentElement.setAttribute('data-theme',t);})();
+(function(){var t=null;try{t=localStorage.getItem('kag-theme');}catch(e){}if(t==='dark'||t==='light')document.documentElement.setAttribute('data-theme',t);})();
 </script>
 </head>
 <body>
@@ -596,7 +596,7 @@ function callAPI(userMessage,role){
   addTyping();
   fetch('/.netlify/functions/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({system:SYSTEM_PROMPT,messages:conversationHistory})})
   .then(function(r){if(!r.ok)throw new Error('Status '+r.status);return r.json();})
-  .then(function(data){removeTyping();var text=(data.content&&data.content[0]&&data.content[0].text)?data.content[0].text:"Sorry, no response came back. Please try again.";conversationHistory.push({role:'assistant',content:text});addMessage('bot',text);})
+  .then(function(data){removeTyping();var text=(data&&data.content&&data.content[0]&&data.content[0].text)||'';if(!text)throw new Error('Empty reply');conversationHistory.push({role:'assistant',content:text});addMessage('bot',text);})
   .catch(function(err){removeTyping();conversationHistory.pop();addMessage('bot',(role&&ROLE_ANSWERS[role])?ROLE_ANSWERS[role]:"The assistant is offline right now. Pick a role above for a summary, or email anitagwolik@gmail.com.");console.error('Chat error:',err);});
 }
 (function(){
@@ -611,7 +611,7 @@ function callAPI(userMessage,role){
   function isDark(){return root.getAttribute('data-theme')==='dark';}
   function label(){tb.textContent=isDark()?'Light':'Dark';tb.setAttribute('aria-label',isDark()?'Switch to light mode':'Switch to dark mode');}
   label();
-  tb.addEventListener('click',function(){var n=isDark()?'light':'dark';root.setAttribute('data-theme',n);try{localStorage.setItem('theme',n);}catch(e){}label();});
+  tb.addEventListener('click',function(){var n=isDark()?'light':'dark';root.setAttribute('data-theme',n);try{localStorage.setItem('kag-theme',n);}catch(e){}label();});
   var rb=document.getElementById('skillsRibbon'),rp=document.getElementById('ribbonPause');
   rp.addEventListener('click',function(){var on=rb.classList.toggle('paused');rp.textContent=on?'Play':'Pause';rp.setAttribute('aria-pressed',on);});
   var rm=document.getElementById('rolesModal');
