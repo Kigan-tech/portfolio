@@ -1,57 +1,59 @@
-exports.handler = async function(event, context) {
-  if (event.httpMethod === 'OPTIONS') {
-    return {
-      statusCode: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS'
-      },
-      body: ''
-    };
-  }
+// Portfolio chatbot using Google Gemini.
+// Needs GEMINI_API_KEY in Netlify > Project configuration > Environment variables.
+// Optional GEMINI_MODEL to change the model without editing code (default below).
+// Check setup: open https://kigan-portfolio.netlify.app/.netlify/functions/chat in a browser.
 
-  if (event.httpMethod !== 'POST') {
-    return { statusCode: 405, body: 'Method Not Allowed' };
+const MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
+};
+const reply = (statusCode, data) => ({
+  statusCode,
+  headers: { ...CORS, 'Content-Type': 'application/json' },
+  body: JSON.stringify(data)
+});
+
+exports.handler = async function (event) {
+  if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers: CORS, body: '' };
+  if (event.httpMethod === 'GET') {
+    return reply(200, { ok: true, keySet: Boolean(process.env.GEMINI_API_KEY), model: MODEL });
   }
+  if (event.httpMethod !== 'POST') return reply(405, { error: 'Method not allowed' });
+  if (!process.env.GEMINI_API_KEY) return reply(500, { error: 'GEMINI_API_KEY is not set in Netlify' });
 
   try {
-    const { messages, system } = JSON.parse(event.body);
-
-    const contents = messages.map(msg => ({
-      role: msg.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: msg.content }]
+    const { messages = [], system = '' } = JSON.parse(event.body || '{}');
+    const contents = messages.slice(-20).map(m => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: String(m.content || '') }]
     }));
+    if (contents.length === 0) return reply(400, { error: 'No messages sent' });
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
         body: JSON.stringify({
-          system_instruction: { parts: [{ text: system }] },
+          system_instruction: { parts: [{ text: String(system).slice(0, 8000) }] },
           contents,
-          generationConfig: { maxOutputTokens: 400 }
+          generationConfig: { maxOutputTokens: 600 }
         })
       }
     );
+    const data = await res.json();
+    const text = (data.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('').trim();
 
-    const data = await response.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-
-    return {
-      statusCode: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ content: [{ text }] })
-    };
+    if (!res.ok || !text) {
+      const why = data.error?.message || data.promptFeedback?.blockReason || 'Empty reply from Gemini';
+      console.error('Gemini error', res.status, why);
+      return reply(502, { error: why });
+    }
+    return reply(200, { content: [{ text }] });
   } catch (err) {
-    return {
-      statusCode: 500,
-      headers: { 'Access-Control-Allow-Origin': '*' },
-      body: JSON.stringify({ error: err.message })
-    };
+    console.error('Chat function error', err);
+    return reply(500, { error: err.message });
   }
 };
