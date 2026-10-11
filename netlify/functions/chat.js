@@ -39,7 +39,7 @@ exports.handler = async function (event) {
         body: JSON.stringify({
           system_instruction: { parts: [{ text: String(system).slice(0, 8000) }] },
           contents,
-          generationConfig: { maxOutputTokens: 600 }
+          generationConfig: { maxOutputTokens: 4096 }
         })
       }
     );
