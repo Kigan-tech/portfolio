@@ -31,20 +31,26 @@ exports.handler = async function (event) {
     }));
     if (contents.length === 0) return reply(400, { error: 'No messages sent' });
 
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
-      {
+    const payload = JSON.stringify({
+      system_instruction: { parts: [{ text: String(system).slice(0, 8000) }] },
+      contents,
+      generationConfig: { maxOutputTokens: 4096 }
+    });
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
+    let res;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: String(system).slice(0, 8000) }] },
-          contents,
-          generationConfig: { maxOutputTokens: 4096 }
-        })
-      }
-    );
+        body: payload
+      });
+      if (res.status !== 429 && res.status !== 500 && res.status !== 503) break;
+      await new Promise(r => setTimeout(r, 1200 * (attempt + 1)));
+    }
     const data = await res.json();
-    const text = (data.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('').trim();
+    const cand = data.candidates?.[0] || {};
+    const text = (cand.content?.parts || []).filter(p => !p.thought).map(p => p.text || '').join('').trim();
+    if (cand.finishReason && cand.finishReason !== 'STOP') console.warn('Gemini finishReason', cand.finishReason);
 
     if (!res.ok || !text) {
       const why = data.error?.message || data.promptFeedback?.blockReason || 'Empty reply from Gemini';
